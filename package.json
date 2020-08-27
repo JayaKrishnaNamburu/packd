@@ -4,6 +4,7 @@
   "description": "Simple alternative to browserify-cdn",
   "scripts": {
     "start": "node server",
+    "dev": "nodemon server",
     "deploy": "now && now alias",
     "test": "node test/test.js",
     "postpublish": "npm run deploy"
@@ -24,7 +25,11 @@
   },
   "homepage": "https://github.com/Rich-Harris/packd#readme",
   "dependencies": {
+    "@rollup/plugin-commonjs": "^15.0.0",
+    "@rollup/plugin-inject": "^4.0.2",
+    "@rollup/plugin-node-resolve": "^9.0.0",
     "browserify": "^16.2.3",
+    "builtin-modules": "^3.1.0",
     "compression": "^1.7.0",
     "etag": "^1.8.0",
     "express": "^4.15.2",
@@ -35,9 +40,10 @@
     "pretty-bytes": "^5.1.0",
     "request": "^2.81.0",
     "request-promise": "^4.2.1",
-    "rollup": "^1.1.0",
-    "rollup-plugin-node-resolve": "^4.0.0",
-    "rollup-plugin-uglify": "^6.0.1",
+    "rollup": "^2.26.6",
+    "rollup-plugin-esm-import-to-url": "^2.1.0",
+    "rollup-plugin-peer-deps-external": "^2.2.3",
+    "rollup-plugin-replace": "^2.2.0",
     "sander": "^0.6.0",
     "semver": "^5.3.0",
     "serve-favicon": "^2.4.2",
@@ -46,7 +52,8 @@
     "terser": "^3.14.1"
   },
   "devDependencies": {
-    "eslint": "^5.12.0"
+    "eslint": "^5.12.0",
+    "nodemon": "^2.0.4"
   },
   "now": {
     "alias": "packd",
