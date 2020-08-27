@@ -10,8 +10,8 @@ const { nodeResolve } = require("@rollup/plugin-node-resolve");
 const commonjs = require("@rollup/plugin-commonjs");
 const replace = require("rollup-plugin-replace");
 // const rollupPluginNodeProcessPolyfill = require("../plugins/rollup-snowpack-process-polyfill");
-// const Terser = require('terser');
-const builtins = require("builtin-modules");
+// const Terser = require("terser");
+const importMap = require("rollup-plugin-esm-import-to-url");
 const isModule = require("is-module");
 const makeLegalIdentifier = require("../utils/makeLegalIdentifier");
 
@@ -27,7 +27,6 @@ process.send("ready");
 
 async function createBundle({ hash, pkg, version, deep, query }) {
   const dir = `${tmpdir}/${hash}`;
-  // const dir = `${tmpdir}/38892299461cb50953f6f04084bbbd1c7d62978e`;
   const cwd = `${dir}/package`;
 
   try {
@@ -43,13 +42,13 @@ async function createBundle({ hash, pkg, version, deep, query }) {
     // const result = Terser.minify(code);
 
     // if (result.error) {
-    // 	info(`[${pkg.name}] minification failed: ${result.error.message}`);
+    //   info(`[${pkg.name}] minification failed: ${result.error.message}`);
     // }
 
     process.send({
       type: "result",
       code,
-      // code: result.error ? code : result.code
+      //   code: result.error ? code : result.code,
     });
   } catch (err) {
     process.send({
@@ -102,6 +101,20 @@ function fetchAndExtract(pkg, version, dir) {
 
 function sanitizePkg(cwd) {
   const pkg = require(`${cwd}/package.json`);
+  pkg.peerDependencies = Object.keys(pkg.peerDependencies).reduce(
+    (acc, item) => {
+      info(item);
+      if (!item.includes("react")) {
+        return (acc = {
+          ...acc,
+          [item]: pkg.peerDependencies[item],
+        });
+      }
+      return acc;
+    },
+    {}
+  );
+  info(JSON.stringify(pkg.peerDependencies, null, 2));
   pkg.scripts = {};
   return sander.writeFile(
     `${cwd}/package.json`,
@@ -178,12 +191,19 @@ async function bundleWithRollup(cwd, pkg, moduleEntry, name) {
     input: path.resolve(cwd, moduleEntry),
     plugins: [
       replace({
-        "process.env.NODE_ENV": JSON.stringify("development"),
+        "process.env.NODE_ENV": JSON.stringify("production"),
+      }),
+      nodeResolve({
+        mainFields: ["browser", "jsnext:main", "module", "main"],
       }),
       commonjs(),
-      nodeResolve({ mainFields: ["browser", "jsnext:main", "module", "main"] }),
+      importMap({
+        imports: {
+          react: "https://cdn.skypack.dev/react@latest",
+          "react-dom": "https://cdn.skypack.dev/react-dom@latest",
+        },
+      }),
     ],
-    external: builtins,
   });
 
   const result = await bundle.generate({
