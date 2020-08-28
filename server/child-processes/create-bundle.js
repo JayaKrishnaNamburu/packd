@@ -1,18 +1,14 @@
-// const fs = require('fs');
 const path = require("path");
 const sander = require("sander");
 const child_process = require("child_process");
 const tar = require("tar");
 const request = require("request");
-// const browserify = require('browserify');
 const rollup = require("rollup");
 const { nodeResolve } = require("@rollup/plugin-node-resolve");
 const commonjs = require("@rollup/plugin-commonjs");
 const replace = require("rollup-plugin-replace");
-// const rollupPluginNodeProcessPolyfill = require("../plugins/rollup-snowpack-process-polyfill");
 // const Terser = require("terser");
 const importMap = require("rollup-plugin-esm-import-to-url");
-const isModule = require("is-module");
 const makeLegalIdentifier = require("../utils/makeLegalIdentifier");
 
 const { npmInstallEnvVars, root, tmpdir } = require("../../config.js");
@@ -101,20 +97,22 @@ function fetchAndExtract(pkg, version, dir) {
 
 function sanitizePkg(cwd) {
   const pkg = require(`${cwd}/package.json`);
-  pkg.peerDependencies = Object.keys(pkg.peerDependencies).reduce(
-    (acc, item) => {
-      info(item);
-      if (!item.includes("react")) {
-        return (acc = {
-          ...acc,
-          [item]: pkg.peerDependencies[item],
-        });
-      }
-      return acc;
-    },
-    {}
-  );
-  info(JSON.stringify(pkg.peerDependencies, null, 2));
+
+  // Removing react, since react gets bundled multiple times and causes issues when loading
+  if (pkg.peerDependencies && Object.keys(pkg.peerDependencies).length > 0) {
+    pkg.peerDependencies = Object.keys(pkg.peerDependencies).reduce(
+      (acc, item) => {
+        if (!item.includes("react")) {
+          return (acc = {
+            ...acc,
+            [item]: pkg.peerDependencies[item],
+          });
+        }
+        return acc;
+      },
+      {}
+    );
+  }
   pkg.scripts = {};
   return sander.writeFile(
     `${cwd}/package.json`,
@@ -163,17 +161,7 @@ function bundle(cwd, deep, query) {
     ? path.resolve(cwd, deep)
     : findEntry(path.resolve(cwd, entryName));
 
-  const code = sander.readFileSync(entry, { encoding: "utf-8" });
-
-  if (isModule(code)) {
-    info(`[${pkg.name}] ES2015 module found, using Rollup`);
-    return bundleWithRollup(cwd, pkg, entry, moduleName);
-  } else {
-    info(`[${pkg.name}] No ES2015 module found, using Browserify`);
-    info(`Anyway bundling ${pkg.name} using rollup`);
-    return bundleWithRollup(cwd, pkg, entry, moduleName);
-    // return bundleWithBrowserify(pkg, entry, moduleName, format);
-  }
+  return bundleWithRollup(cwd, pkg, entry, moduleName);
 }
 
 function findEntry(file) {
@@ -196,15 +184,23 @@ async function bundleWithRollup(cwd, pkg, moduleEntry, name) {
       nodeResolve({
         mainFields: ["browser", "jsnext:main", "module", "main"],
       }),
-      commonjs(),
+      commonjs({
+        requireReturnsDefault: "preferred",
+      }),
       importMap({
         imports: {
           react: "https://cdn.skypack.dev/react@latest",
           "react-dom": "https://cdn.skypack.dev/react-dom@latest",
         },
+        // imports: {
+        //   react: "http://localhost:9000/react@latest",
+        //   "react-dom": "http://localhost:9000/react-dom@latest",
+        // },
       }),
     ],
   });
+
+  // TODO: esm bundle using rollup for react and react-dom doesn't work well. So switch to sjypack for those
 
   const result = await bundle.generate({
     format: "esm",
@@ -218,51 +214,10 @@ async function bundleWithRollup(cwd, pkg, moduleEntry, name) {
     throw new Error(`Failed to generate esm bundle for ${pkg.name}`);
   }
 
-  // if (result.output.length > 1) {
-  // 	info(`[${pkg.name}] generated multiple chunks, trying Browserify instead`);
-  // 	return bundleWithBrowserify(pkg, moduleEntry, name, format);
-  // }
-
-  // if (result.output[0].imports.length > 0) {
-  // 	info(`Handling for the dependency ${name}, ${moduleEntry}`);
-  // 	info(
-  // 		`[${pkg.name}] non-ES2015 dependencies found, handing off to Browserify`
-  // 	);
-
-  // 	const intermediate = `${cwd}/__intermediate.js`;
-  // 	const { code } = await bundle.generate({
-  // 		format: 'cjs'
-  // 	});
-
-  // 	fs.writeFileSync(intermediate, code);
-  // 	return bundleWithBrowserify(pkg, intermediate, name, format);
-  // }
-
   info(`[${pkg.name}] bundled using Rollup`);
 
   return result.output[0].code;
 }
-
-// function bundleWithBrowserify(pkg, main, moduleName, format) {
-// 	if (format === 'esm') {
-// 		throw new Error(`Failed to generate ES module`);
-// 	}
-
-// 	const b = browserify(main, {
-// 		standalone: moduleName
-// 	});
-
-// 	return new Promise((fulfil, reject) => {
-// 		b.bundle((err, buf) => {
-// 			if (err) {
-// 				reject(err);
-// 			} else {
-// 				info(`[${pkg.name}] bundled using Browserify`);
-// 				fulfil('' + buf);
-// 			}
-// 		});
-// 	});
-// }
 
 function exec(cmd, cwd, pkg) {
   return new Promise((fulfil, reject) => {
